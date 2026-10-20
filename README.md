@@ -6,20 +6,27 @@ work out of the box:
 - **The internal speakers** (shows auto_null)
 - **The Quick Access button** on the right side (workaround with Xbox + A)
 
-## Requirements
+**The speaker fix needs the SteamOS Beta channel.** It doesn't work on Stable.
 
-> **The speaker fix needs the SteamOS Beta channel.** It works with the Beta's
-> kernel **`7.2.7-valve2-1-neptune-72-g31504582a073`**. It does **not** work on
-> SteamOS Stable, whose kernel (6.18) is missing the audio driver support the
-> X20 needs.
+## Install
 
-To check your kernel, open Konsole in Desktop Mode and run `uname -r`. On
-Stable, X20 Fixes says **Needs SteamOS Beta** and doesn't change anything.
+1. Install SteamOS.
+2. Switch to the Beta channel: **Settings → System → System Update Channel →
+   Beta**, then update and restart.
+3. Go to Desktop Mode: hold the power button → **Switch to Desktop**.
+4. Install [Decky Loader](https://decky.xyz).
 
-To switch to Beta: **Settings → System**, set **System Update Channel** to
-**Beta**, then **Check for Updates**, install the update, and restart.
+   > You probably also want [SimpleDeckyTDP](https://github.com/aarron-lee/SimpleDeckyTDP)
+   > for power limits. Install it now from Konsole:
+   > `curl -L https://github.com/aarron-lee/SimpleDeckyTDP/raw/main/install.sh | sh`
 
-### What has been tested
+5. Download [`x20-fixes.zip`](https://github.com/ovenham/rog-ally-x20-steamos-speaker-qam-fix/releases/latest/download/x20-fixes.zip),
+   then return to Gaming Mode.
+6. Open Decky (Xbox + A → plug icon) → gear → turn on **Developer mode** →
+   **Developer** → **Install Plugin from ZIP File** → pick `x20-fixes.zip`.
+7. Open **X20 Fixes**, tap **Apply fix**, and reboot.
+
+## What has been tested
 
 | Kernel | Speaker fix |
 |---|---|
@@ -34,44 +41,6 @@ may fail; if it does, it stops without changing anything. If you try a
 different kernel, please
 [open an issue](https://github.com/ovenham/rog-ally-x20-steamos-speaker-qam-fix/issues)
 saying whether it worked.
-
-## Install
-
-You'll need an internet connection. If you already have Decky Loader, skip
-steps 2 and 3 below.
-
-### Step 1: In Desktop Mode
-
-1. Hold the **power button** and choose **Switch to Desktop**.
-2. **Set a password**, if you've never set one. Open **Konsole** (in the app
-   menu, under System), type `passwd`, press Enter, and type a new password twice.
-   Nothing shows on screen while you type; that's normal. Press **Steam + X**
-   to bring up the on-screen keyboard.
-3. **Install Decky Loader**, if you don't have it. Go to
-   [decky.xyz](https://decky.xyz) in the browser, download the installer, run
-   it, choose the release version, and enter your password when asked.
-4. **Download [`x20-fixes.zip`](https://github.com/ovenham/rog-ally-x20-steamos-speaker-qam-fix/releases/latest/download/x20-fixes.zip)**.
-   It saves to your Downloads folder. Don't unzip it.
-5. Double-click **Return to Gaming Mode** on the desktop.
-
-### Step 2: In Game Mode
-
-1. Press **Xbox + A** to open the Quick Access menu, then select the **plug
-   icon** (Decky).
-2. Select the **gear icon**, and turn on **Developer mode**.
-3. Go to the new **Developer** section and choose **Install Plugin from ZIP
-   File**. Then select **Browse**, go to **Downloads**, pick **x20-fixes.zip**, and
-   confirm the install.
-
-The Quick Access button now works on its own.
-
-### Step 3: Turn on the speakers
-
-1. Open the Quick Access menu → plug icon → **X20 Fixes**.
-2. Tap **Apply fix**, and wait for the "Speaker fix applied" message.
-3. Tap **Reboot now**.
-
-That's it. After the reboot, X20 Fixes should say **Speakers working**.
 
 ## After a SteamOS update
 
@@ -111,7 +80,8 @@ The rest of this page is for people who want to know how it works.
 
 ## Without Decky (speakers only)
 
-From Desktop Mode, in Konsole:
+From Desktop Mode, in Konsole. `sudo` needs a password; set one with `passwd`
+if you never have.
 
 ```
 cd speaker-fix
