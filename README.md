@@ -19,9 +19,21 @@ Stable, X20 Fixes says **Needs SteamOS Beta** and doesn't change anything.
 To switch to Beta: **Settings → System**, set **System Update Channel** to
 **Beta**, then **Check for Updates**, install the update, and restart.
 
-Other 7.2-series kernels may also work. On those, X20 Fixes offers **Rebuild and
-apply fix**, which builds the speaker module for your kernel on the device, but
-only 7.2.7 has been tested.
+### What has been tested
+
+| Kernel | Speaker fix |
+|---|---|
+| `7.2.7-valve2-1-neptune-72-g31504582a073` (SteamOS Beta) | **Works.** Tested on a real X20. |
+| 6.18 (SteamOS Stable) | **Doesn't work.** Tested on a real X20. |
+| Any other kernel, including future Beta updates | **Untested.** |
+
+Anything beyond those two kernels is speculation. On a newer kernel, X20 Fixes
+offers **Rebuild and apply fix**, which tries to build the speaker module for
+that kernel on the device. That rebuild has not been tested on a real X20 and
+may fail; if it does, it stops without changing anything. If you try a
+different kernel, please
+[open an issue](https://github.com/ovenham/rog-ally-x20-steamos-speaker-qam-fix/issues)
+saying whether it worked.
 
 ## Install
 
@@ -64,8 +76,12 @@ That's it. After the reboot, X20 Fixes should say **Speakers working**.
 ## After a SteamOS update
 
 Updates undo the speaker fix. When that happens, X20 Fixes shows a message
-after you update. Open it, tap the button it shows (**Apply fix**, or
-**Rebuild and apply fix** if SteamOS got a new kernel), then reboot.
+after you update. Open it, tap the button it shows, then reboot:
+
+- **Apply fix** if the kernel didn't change. This is the normal case.
+- **Rebuild and apply fix** if the update brought a new kernel. This is
+  untested (see [What has been tested](#what-has-been-tested)), so it may not
+  work. If it fails, nothing is changed.
 
 To have this happen automatically, turn on **Re-apply after updates** in X20
 Fixes. A new kernel still needs the button.
@@ -199,7 +215,8 @@ sudo PLUGIN=plugin speaker-fix/tests/run.sh # speaker fix + plugin backend on a 
 The speaker tests run the script against a simulated X20 inside a private mount
 namespace, so they never touch the real system. They cover install, reboot,
 re-install, BIOS updates, uninstall, grub.cfg rollback, SteamOS kernel updates,
-and the point where SteamOS catches up. CI runs everything on each push, and
+too-old kernels, and the point where SteamOS catches up. They check the
+script's logic only; they don't build a module or test any kernel. CI runs everything on each push, and
 builds and attaches the zip to each published release.
 
 ## Credits
