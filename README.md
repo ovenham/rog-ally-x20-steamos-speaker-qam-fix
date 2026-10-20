@@ -6,9 +6,26 @@ work out of the box:
 - **The internal speakers** (shows auto_null)
 - **The Quick Access button** on the right side (workaround with Xbox + A)
 
+## Requirements
+
+> **The speaker fix needs the SteamOS Beta channel.** It works with the Beta's
+> kernel **`7.2.7-valve2-1-neptune-72-g31504582a073`**. It does **not** work on
+> SteamOS Stable, whose kernel (6.18) is missing the audio driver support the
+> X20 needs.
+
+To check your kernel, open Konsole in Desktop Mode and run `uname -r`.
+
+To switch to Beta: **Settings → System**, set **System Update Channel** to
+**Beta**, then **Check for Updates**, install the update, and restart.
+
+Other 7.2-series kernels may also work. On those, X20 Fixes offers **Rebuild and
+apply fix**, which builds the speaker module for your kernel on the device, but
+only 7.2.7 has been tested.
+
 ## Install
 
-You'll need about 10 minutes and an internet connection.
+You'll need an internet connection. If you already have Decky Loader, skip
+steps 2 and 3 below.
 
 ### Step 1: In Desktop Mode
 
@@ -52,6 +69,9 @@ after you update. Open it, tap the button it shows (**Apply fix**, or
 To have this happen automatically, turn on **Re-apply after updates** in X20
 Fixes. A new kernel still needs the button.
 
+If you switch back to the Stable channel, the speakers stop working until
+you return to Beta.
+
 ## Removing it
 
 Open X20 Fixes, tap **Remove fix**, and reboot. Then you can uninstall the
@@ -67,8 +87,8 @@ with what the log and the **Details** section say.
 ---
 
 *Unofficial, and not affiliated with ASUS, Microsoft or Valve. Use at your own
-risk. Tested on a ROG Xbox Ally X20 with BIOS RC74XA.303 and SteamOS kernel
-`7.2.7-valve2-1-neptune-72-g31504582a073`.*
+risk. Tested on a ROG Xbox Ally X20 with BIOS RC74XA.303 on the SteamOS Beta
+channel, kernel `7.2.7-valve2-1-neptune-72-g31504582a073`.*
 
 The rest of this page is for people who want to know how it works.
 
