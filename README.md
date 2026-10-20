@@ -3,8 +3,8 @@
 Running SteamOS on the ASUS ROG Xbox Ally X20? This fixes two things that don't
 work out of the box:
 
-- **The internal speakers** (you only get HDMI audio or "Dummy Output")
-- **The Quick Access button** on the right side (normally you'd need Xbox + A)
+- **The internal speakers** (shows auto_null)
+- **The Quick Access button** on the right side (workaround with Xbox + A)
 
 ## Install
 
