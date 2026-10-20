@@ -8,6 +8,7 @@ T=$(mktemp -d)
 KVER1=7.2.7-valve2-1-neptune-72-g31504582a073   # has a prebuilt module in the repo
 KVER2=7.3.1-valve1-1-neptune-73-g0123456789ab   # a later SteamOS kernel
 KVER3=7.3.2-valve1-1-neptune-73-g0123456789ab   # and the one after that
+KVER_OLD=6.18.0-valve1-1-neptune-618-g0123456789a  # SteamOS Stable: no X20 audio support
 export ALLY_AUDIO_DATA=$T/data
 PASS=0 FAIL=0
 
@@ -21,7 +22,7 @@ mkdir -p /sys/firmware/acpi/tables /sys/firmware/efi/efivars /sys/class/dmi/id \
 	/sys/bus/pci/devices/0000:c4:00.5 /sys/module/firmware_class/parameters \
 	/sys/module/snd_soc_acpi_amd_match /efi/EFI/steamos \
 	/usr/share/alsa/ucm2/sof-soundwire /usr/share/alsa/ucm2/common \
-	"$T/bin" "$T/knobs" "$T/stock/$KVER1" "$T/stock/$KVER2" "$T/stock/$KVER3"
+	"$T/bin" "$T/knobs" "$T/stock/$KVER1" "$T/stock/$KVER2" "$T/stock/$KVER3" "$T/stock/$KVER_OLD"
 : > /sys/module/firmware_class/parameters/path
 echo "ROG XBOX Ally X RC74XA" > /sys/class/dmi/id/product_name
 echo RC74XA.301 > /sys/class/dmi/id/bios_version
@@ -64,7 +65,14 @@ open(sys.argv[2], "wb").write(d)
 PY
 cp "$T/stock-nolayout.ko" "$T/stock/$KVER1/snd_soc_acpi_amd_match.ko"
 cp "$T/stock-nolayout.ko" "$T/stock/$KVER2/snd_soc_acpi_amd_match.ko"
-for k in "$KVER1" "$KVER2" "$KVER3"; do echo "no quirk here" > "$T/stock/$k/snd_acp_config.ko"; done
+# The 6.18 table has no RT721 headset codec either.
+python3 -I - "$T/stock-nolayout.ko" "$T/stock/$KVER_OLD/snd_soc_acpi_amd_match.ko" <<'PY'
+import struct, sys
+d = open(sys.argv[1], "rb").read()
+d = d.replace(struct.pack("<Q", 0x000130025D072101), struct.pack("<Q", 0))
+open(sys.argv[2], "wb").write(d)
+PY
+for k in "$KVER1" "$KVER2" "$KVER3" "$KVER_OLD"; do echo "no quirk here" > "$T/stock/$k/snd_acp_config.ko"; done
 
 # --- fake tools ------------------------------------------------------------------------
 
@@ -343,13 +351,23 @@ expect acpi not_needed
 expect_ok sh "$FIX" install
 [ ! -e /etc/modprobe.d/ally-audio-fix.conf ] && ok "install does nothing once fixed upstream" || bad "install changed things"
 
-echo "14. not an X20"
+echo "14. SteamOS Stable's kernel (6.18) is too old"
+echo "$KVER_OLD" > "$T/knobs/next_kver"
+rm -f /usr/share/alsa/ucm2/sof-soundwire/tas2783.conf
+reboot
+expect state kernel_too_old
+expect module kernel_too_old
+expect_fail "need SteamOS Beta" sh "$FIX" install
+same_grub "untouched on a too-old kernel"
+[ ! -e /var/lib/ally-audio-fix ] && ok "nothing installed on a too-old kernel" || bad "files created on a too-old kernel"
+
+echo "15. not an X20"
 echo 0x1955 > /sys/bus/pci/devices/0000:c4:00.5/subsystem_device
 expect state unsupported
 expect_fail "expected 1043:1954" sh "$FIX" install
 
 if [ -n "${PLUGIN:-}" ]; then
-	echo "15. Decky plugin backend (main.py) on a fresh, unfixed unit"
+	echo "16. Decky plugin backend (main.py) on a fresh, unfixed unit"
 	echo 0x1954 > /sys/bus/pci/devices/0000:c4:00.5/subsystem_device
 	echo "$KVER1" > "$T/knobs/next_kver"
 	rm -f /usr/share/alsa/ucm2/sof-soundwire/tas2783.conf

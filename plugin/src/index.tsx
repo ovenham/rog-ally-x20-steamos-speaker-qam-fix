@@ -64,6 +64,7 @@ const HEADLINE: Record<string, string> = {
   fixed_upstream: "Fix no longer needed",
   broken: "Speakers not working",
   unsupported: "Not an Ally X20",
+  kernel_too_old: "Needs SteamOS Beta",
 };
 
 // How each component's state reads in the details list.
@@ -83,6 +84,7 @@ const COMPONENT: Record<string, Record<string, string>> = {
     available: "Ready to install",
     missing: "Needs building for this kernel",
     not_needed: "Not needed (kernel has it)",
+    kernel_too_old: "Needs SteamOS Beta",
   },
   firmware: { installed: "Installed", system: "Provided by SteamOS", missing: "Missing" },
   ucm: { overlay: "Installed", system: "Provided by SteamOS", missing: "Missing" },
@@ -313,7 +315,7 @@ function Content() {
             </div>
           </PanelSectionRow>
         )}
-        {!["unsupported", "fixed_upstream"].includes(state) && (
+        {!["unsupported", "fixed_upstream", "kernel_too_old"].includes(state) && (
           <PanelSectionRow>
             <ButtonItem
               layout="below"

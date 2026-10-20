@@ -65,6 +65,10 @@ SPEAKER_ID_VAR=/sys/firmware/efi/efivars/SPEAKER_ID-aa61eaaf-6e83-7523-b0d0-7df7
 # SoundWire addresses of the two amps on link 0 (unique IDs 8 and 0xB). If the stock
 # layout module already contains both, the kernel has the fix and we don't replace it.
 TAS_L0_ADRS="0x0000380102000001 0x00003B0102000001"
+# SoundWire address of the RT721 headset codec on link 1. A kernel whose layout table
+# lacks it (SteamOS Stable's 6.18) predates the X20's audio support altogether, and one
+# rebuilt module can't make up for that: the speakers need SteamOS Beta's newer kernel.
+RT721_ADR=0x000130025D072101
 # Product name fragment the kernel's ACP 7.0 flag-override DMI table would carry.
 DMI_FRAGMENT=RC74XA
 
@@ -147,6 +151,13 @@ stock_has_layout() {
 	# shellcheck disable=SC2086
 	module_contains snd_soc_acpi_amd_match adr $TAS_L0_ADRS
 }
+
+# The kernel has the X20's audio support (everything but the link-0 layout).
+kernel_supported() {
+	module_contains snd_soc_acpi_amd_match adr "$RT721_ADR"
+}
+
+TOO_OLD="The speakers need SteamOS Beta (kernel 7.2 or newer); this kernel ($KVER) is too old. Switch the update channel to Beta in Settings > System, update, then apply the fix."
 
 # The kernel already ignores the BIOS flag on this model (DMI quirk upstream).
 kernel_has_flag_quirk() {
@@ -479,6 +490,7 @@ compute_state() {
 	if module_loaded; then module=loaded
 	elif [ -f "$LIB/modules/$KVER/$MODNAME" ]; then module=installed
 	elif stock_has_layout; then module=not_needed
+	elif ! kernel_supported; then module=kernel_too_old
 	elif module_source > /dev/null; then module=available
 	else module=missing
 	fi
@@ -509,6 +521,8 @@ compute_state() {
 		state=needs_reboot message="The fix was removed. Reboot to finish."
 	elif [ "$acpi" = stale ] || [ "$acpi" = override_ignored ]; then
 		state=acpi_stale message="The BIOS was updated after the ACPI fix was made. Remove the fix, reboot, then apply it again."
+	elif [ "$module" = kernel_too_old ] && [ "$speakers" = 0 ]; then
+		state=kernel_too_old message="$TOO_OLD"
 	elif [ "$speakers" = 1 ] && [ "$ucm" != missing ] && [ "$firmware" != missing ]; then
 		if [ "$ours" = 1 ]; then
 			state=ok message="Speakers are working with the fix."
@@ -541,6 +555,7 @@ cmd_install() {
 		[ ! -e "$LIB" ] || echo "You can remove the leftovers with: sudo $0 uninstall"
 		return 0
 	fi
+	[ "$state" != kernel_too_old ] || die "$TOO_OLD"
 	mkdir -p "$LIB"
 	need_module=1
 	if stock_has_layout; then
@@ -630,6 +645,7 @@ cmd_status() {
 
 cmd_build() {
 	[ "$(id -u)" != 0 ] || die "run build as your normal user (it uses rootless podman, stored in your home)"
+	kernel_supported || die "$TOO_OLD"
 	command -v podman > /dev/null || die "podman not found"
 	pkg=$(pacman -Qo "/usr/lib/modules/$KVER/vmlinuz" | awk '{print $(NF-1), $NF}')
 	# shellcheck disable=SC2086

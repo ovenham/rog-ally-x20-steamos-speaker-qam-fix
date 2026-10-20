@@ -13,7 +13,8 @@ work out of the box:
 > SteamOS Stable, whose kernel (6.18) is missing the audio driver support the
 > X20 needs.
 
-To check your kernel, open Konsole in Desktop Mode and run `uname -r`.
+To check your kernel, open Konsole in Desktop Mode and run `uname -r`. On
+Stable, X20 Fixes says **Needs SteamOS Beta** and doesn't change anything.
 
 To switch to Beta: **Settings → System**, set **System Update Channel** to
 **Beta**, then **Check for Updates**, install the update, and restart.
