@@ -17,8 +17,7 @@ work out of the box:
 4. Install [Decky Loader](https://decky.xyz).
 
    > You probably also want [SimpleDeckyTDP](https://github.com/aarron-lee/SimpleDeckyTDP)
-   > for power limits. Install it now from Konsole:
-   > `curl -L https://github.com/aarron-lee/SimpleDeckyTDP/raw/main/install.sh | sh`
+   > for power limits.
 
 5. Download [`x20-fixes.zip`](https://github.com/ovenham/rog-ally-x20-steamos-speaker-qam-fix/releases/latest/download/x20-fixes.zip),
    then return to Gaming Mode.
