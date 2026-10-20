@@ -1,0 +1,34 @@
+ASoC: amd: acp-config: ignore the BIOS ACP flag on ROG Xbox Ally X20
+
+The ROG Xbox Ally X20 (DMI product name contains RC74XA) sets
+acp-audio-config-flag to 0x10 (legacy driver, DMIC only) in its ACPI
+tables, which makes Linux skip SoundWire. Its speakers are two TAS2783
+amps on SoundWire link 0 and the RT721 headset codec is on link 1, so
+the flag must be ignored like on the other ACP 7.0 systems already in
+acp70_acpi_flag_override_table.
+
+With this merged, speaker-fix's ACPI table override is no longer needed.
+Against linux v7.2.7. Add your own Signed-off-by before submitting.
+
+diff --git a/sound/soc/amd/acp-config.c b/sound/soc/amd/acp-config.c
+index 8e15638..280a420 100644
+--- a/sound/soc/amd/acp-config.c
++++ b/sound/soc/amd/acp-config.c
+@@ -63,6 +63,17 @@ static const struct dmi_system_id acp70_acpi_flag_override_table[] = {
+ 			DMI_MATCH(DMI_PRODUCT_NAME, "Vivobook 18 M1807GA"),
+ 		},
+ 	},
++	{
++		/*
++		 * ASUS ROG Xbox Ally X20 (RC74XA, ACP 7.0): the BIOS sets
++		 * acp-audio-config-flag to legacy/DMIC-only, but the speakers are
++		 * two TAS2783 amps on SoundWire link 0.
++		 */
++		.matches = {
++			DMI_MATCH(DMI_BOARD_VENDOR, "ASUSTeK COMPUTER INC"),
++			DMI_MATCH(DMI_PRODUCT_NAME, "RC74XA"),
++		},
++	},
+ 	{}
+ };
+ 

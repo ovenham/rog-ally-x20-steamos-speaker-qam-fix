@@ -1,0 +1,17 @@
+{
+  "name": "X20 Fixes",
+  "author": "ovenham",
+  "flags": [
+    "root"
+  ],
+  "api_version": 1,
+  "publish": {
+    "tags": [
+      "audio",
+      "root",
+      "rog-ally"
+    ],
+    "description": "ROG Xbox Ally X20 on SteamOS: turns on the internal speakers, keeps them on after updates, and makes the Quick Access button work.",
+    "image": "https://opengraph.githubassets.com/1/ovenham/rog-ally-x20-steamos-speaker-qam-fix"
+  }
+}

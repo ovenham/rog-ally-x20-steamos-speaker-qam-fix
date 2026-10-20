@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+
+      - name: Lint
+        run: |
+          pip install --quiet pyflakes
+          shellcheck -s sh -S warning build.sh speaker-fix/ally-audio-fix.sh speaker-fix/tests/*.sh tools/*.sh
+          python3 -m pyflakes plugin/main.py plugin/py_modules plugin/tests
+
+      - name: Test Quick Access button watcher
+        run: python3 plugin/tests/qam_test.py
+
+      - name: Test speaker fix and plugin backend (simulated X20)
+        run: sudo PLUGIN=plugin speaker-fix/tests/run.sh
+
+      - name: Build plugin
+        run: |
+          ./build.sh
+          (cd plugin && npx tsc --noEmit --skipLibCheck)
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: x20-fixes
+          path: out/x20-fixes.zip
+
+      - name: Attach zip to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" out/x20-fixes.zip --clobber

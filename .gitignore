@@ -1,0 +1,6 @@
+node_modules/
+plugin/dist/
+out/
+build-out/
+cache/
+__pycache__/
