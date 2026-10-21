@@ -52,16 +52,21 @@ async def detection():
     async def on_wake():
         calls.append(offset[0])
 
-    w = wake_fix.WakeWatcher(on_wake, logs.append, offset=lambda: offset[0])
+    # Without the kernel's sleep counter: the clock offset alone.
+    w = wake_fix.WakeWatcher(on_wake, logs.append, offset=lambda: offset[0], count=lambda: None)
     w.start()
     await asyncio.sleep(0.05)
     check(calls == [], "no action while awake")
-    offset[0] += 0.5          # clock jitter, not a sleep
+    offset[0] += 0.001        # rounding noise, not a sleep
     await asyncio.sleep(0.05)
-    check(calls == [], "small offset changes are ignored")
+    check(calls == [], "tiny offset changes are ignored")
+    offset[0] += 0.6          # a short nap: s2idle only counts part of it
+    await asyncio.sleep(0.05)
+    check(len(calls) == 1 and w.wakes == 1, "a short sleep is caught from the clocks")
     offset[0] += 60           # slept a minute
     await asyncio.sleep(0.05)
-    check(len(calls) == 1 and w.wakes == 1, "a wake triggers the fix once")
+    check(len(calls) == 2, "a long sleep is caught from the clocks")
+    calls.clear()
 
     async def boom():
         raise RuntimeError("pactl missing")
@@ -72,9 +77,24 @@ async def detection():
     w.on_wake = on_wake
     offset[0] += 30
     await asyncio.sleep(0.05)
-    check(len(calls) == 2, "the watcher keeps working after a failure")
+    check(len(calls) == 1, "the watcher keeps working after a failure")
     await w.stop()
     check(w.task is None, "stop ends the watcher")
+
+    # With the kernel's sleep counter: catches a wake even if the clocks didn't move.
+    count = [7]
+    calls.clear()
+    w = wake_fix.WakeWatcher(on_wake, logs.append, offset=lambda: 5.0, count=lambda: count[0])
+    w.start()
+    await asyncio.sleep(0.05)
+    check(calls == [], "counter unchanged: no action")
+    count[0] += 1
+    await asyncio.sleep(0.05)
+    check(len(calls) == 1, "counter went up: the fix runs")
+    await asyncio.sleep(0.05)
+    check(len(calls) == 1, "and only once per wake")
+    check(any("sleep counter: 7" in m for m in logs), "logs that it is watching")
+    await w.stop()
 
 asyncio.run(detection())
 

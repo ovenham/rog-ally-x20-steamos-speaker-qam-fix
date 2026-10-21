@@ -12,15 +12,26 @@ import asyncio
 import time
 
 POLL_S = 1.0
-# BOOTTIME keeps counting during suspend and MONOTONIC doesn't, so a jump in their
-# difference means the system was asleep.
-SLEPT_THRESHOLD_S = 2.0
+# The kernel counts successful sleeps; it goes up by one on every wake.
+SUSPEND_COUNT = "/sys/power/suspend_stats/success"
+# Fallback if that file is missing: BOOTTIME keeps counting during sleep and MONOTONIC
+# doesn't, so their difference only ever changes across a sleep. With s2idle the jump
+# can be well under a second for a short nap, so the threshold is low.
+SLEPT_THRESHOLD_S = 0.25
 # Give PipeWire a moment to notice the broken stream before reopening it.
 SETTLE_S = 1.5
 
 
 def sleep_offset() -> float:
     return time.clock_gettime(time.CLOCK_BOOTTIME) - time.clock_gettime(time.CLOCK_MONOTONIC)
+
+
+def suspend_count() -> int | None:
+    try:
+        with open(SUSPEND_COUNT) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return None
 
 
 def sinks_to_reopen(pactl_short_sinks: str) -> list[str]:
@@ -39,10 +50,11 @@ def sinks_to_reopen(pactl_short_sinks: str) -> list[str]:
 class WakeWatcher:
     """Calls `on_wake` (a coroutine function) after each resume from sleep."""
 
-    def __init__(self, on_wake, log, offset=sleep_offset):
+    def __init__(self, on_wake, log, offset=sleep_offset, count=suspend_count):
         self.on_wake = on_wake
         self.log = log
         self.offset = offset
+        self.count = count
         self.task = None
         self.wakes = 0
 
@@ -60,15 +72,18 @@ class WakeWatcher:
             self.task = None
 
     async def _run(self):
-        last = self.offset()
+        last_offset, last_count = self.offset(), self.count()
+        self.log(f"watching for wakes (sleep counter: {last_count if last_count is not None else 'unavailable'})")
         while True:
             await asyncio.sleep(POLL_S)
-            now = self.offset()
-            slept, last = now - last, now
-            if slept < SLEPT_THRESHOLD_S:
+            offset, count = self.offset(), self.count()
+            slept = offset - last_offset
+            counted = count is not None and last_count is not None and count != last_count
+            last_offset, last_count = offset, count
+            if not counted and slept < SLEPT_THRESHOLD_S:
                 continue
             self.wakes += 1
-            self.log(f"woke after {slept:.0f} s asleep")
+            self.log(f"woke (sleep counter {count}, about {slept:.1f} s asleep)")
             await asyncio.sleep(SETTLE_S)
             try:
                 await self.on_wake()

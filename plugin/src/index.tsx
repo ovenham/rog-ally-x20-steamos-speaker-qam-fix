@@ -292,7 +292,7 @@ function Content() {
               label="Fix sound after sleep"
               description={
                 snap.settings.wake_fix
-                  ? `Reopens the speakers right after waking (${snap.wake.reopened} times since boot).`
+                  ? `Reopens the speakers right after waking. Since boot: ${snap.wake.wakes} wakes, ${snap.wake.reopened} reopens.`
                   : "Off. After waking, the speakers can stay silent for 30 seconds or more."
               }
               checked={snap.settings.wake_fix}
