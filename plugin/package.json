@@ -1,6 +1,6 @@
 {
   "name": "x20-fixes",
-  "version": "1.0.2",
+  "version": "1.0.1",
   "description": "Decky plugin: speakers and Quick Access button for the ROG Xbox Ally X20 on SteamOS.",
   "type": "module",
   "scripts": {
