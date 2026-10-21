@@ -99,6 +99,41 @@ async def detection():
 asyncio.run(detection())
 
 
+# --- re-sending the controller mode -------------------------------------------------
+
+drv = tempfile.mkdtemp()
+for dev, mode in (("0003:0B05:1B4C.0003", "1\n"), ("0003:0B05:1B4C.0006", None)):
+    os.makedirs(os.path.join(drv, dev))
+    if mode is not None:
+        with open(os.path.join(drv, dev, "gamepad_mode"), "w") as f:
+            f.write(mode)
+writes = []
+_real_open = open
+
+
+def tracking_open(path, mode="r", *a, **k):
+    if "w" in mode and path.endswith("gamepad_mode"):
+        writes.append(path)
+    return _real_open(path, mode, *a, **k)
+
+
+import builtins  # noqa: E402
+builtins.open = tracking_open
+mode_logs = []
+n = wake_fix.resend_gamepad_mode(mode_logs.append, driver_dir=drv)
+builtins.open = _real_open
+check(n == 1 and len(writes) == 1, "writes gamepad_mode on the device that has it")
+with open(os.path.join(drv, "0003:0B05:1B4C.0003", "gamepad_mode")) as f:
+    check(f.read() == "1", "writes back the same mode it read (no hardcoded value)")
+with open(os.path.join(drv, "0003:0B05:1B4C.0003", "gamepad_mode"), "w") as f:
+    f.write("2\n")
+wake_fix.resend_gamepad_mode(mode_logs.append, driver_dir=drv)
+with open(os.path.join(drv, "0003:0B05:1B4C.0003", "gamepad_mode")) as f:
+    check(f.read() == "2", "keeps a mode the user chose")
+check(wake_fix.resend_gamepad_mode(mode_logs.append, driver_dir=os.path.join(drv, "missing")) == 0,
+      "no controller driver: nothing to do")
+
+
 # --- the backend runs the right commands, as the desktop user --------------------------
 
 work = tempfile.mkdtemp()
@@ -139,6 +174,26 @@ async def backend():
           "passes the user's runtime dir so pactl finds PipeWire")
     check(p.wake_reopened == 1, "counts the reopen")
     check(main.DEFAULT_SETTINGS["wake_fix"] is True, "on by default")
+
+    # After a wake: mode re-sent, sinks reopened, mode re-sent again, counted once.
+    order = []
+    wake_fix.MODE_RESEND_LATER_S = 0
+    main.wake_fix.resend_gamepad_mode = lambda log: order.append("mode") or 1
+
+    async def fake_reopen():
+        order.append("sinks")
+
+    p._reopen_sinks = fake_reopen
+    await p._after_wake()
+    check(order == ["mode", "sinks", "mode"], "after a wake: mode, speakers, then mode again")
+    check(p.mode_resent == 1, "counts the controller fix once per wake")
+    check(main.DEFAULT_SETTINGS["button_fix"] is True, "button fix on by default")
+    order.clear()
+    await p.set_button_fix(False)
+    await p._after_wake()
+    check(order == ["sinks"], "button fix off: only the speakers")
+    await p.set_wake_fix(False)
+    check(p.wake is None, "both off: the wake watcher stops")
 
 asyncio.run(backend())
 

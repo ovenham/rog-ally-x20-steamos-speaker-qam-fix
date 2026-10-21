@@ -6,8 +6,8 @@ work out of the box:
 - **The internal speakers** (shows auto_null)
 - **The Quick Access button** on the right side (workaround with Xbox + A)
 
-It also stops the speakers from going silent for 30 seconds or more after waking
-from sleep.
+It also fixes two problems after waking from sleep: the speakers going silent for
+30 seconds or more, and the Xbox button sometimes going dead.
 
 **The speaker fix needs the SteamOS Beta channel.** It doesn't work on Stable.
 
@@ -109,6 +109,21 @@ SoundWire bus. Four separate problems keep them silent:
 
 Each part is skipped once SteamOS or the BIOS handles it. If everything has been
 fixed upstream, the plugin says the fix can be removed.
+
+### Buttons after sleep
+
+After some wakes, the controller comes back in a different mode: the Xbox button
+sends nothing, Quick Access sends F1 and Armoury Crate sends F8 (so Quick Access
+opens Steam's main menu). The driver still reports the old mode, so writing that
+same mode back makes it re-send it to the controller:
+
+```
+echo 1 | sudo tee /sys/bus/hid/devices/0003:0B05:1B4C.0003/gamepad_mode
+```
+
+X20 Fixes does this after every wake, writing back whatever mode is set, and again
+a few seconds later in case the controller wasn't ready. Turn it off with **Fix
+buttons after sleep**.
 
 ### Sound after sleep
 

@@ -1,7 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# Fixes the X20's speakers going silent after sleep.
+# Fixes two things that sometimes go wrong when the X20 wakes from sleep.
 #
+# Buttons: the controller sometimes comes back in a different mode. The Xbox button
+# goes dead and the extra buttons send keyboard keys (Quick Access sends F1, Armoury
+# Crate F8), while the driver's gamepad_mode still reads the old value. Writing that
+# same value back to gamepad_mode makes the driver re-send it, which restores them.
+#
+# Speakers:
 # On resume, PipeWire tries to recover the open SoundWire PCM in place and fails
 # ("hw:amdsoundwire,2p: snd_pcm_avail after recover: Broken pipe"), yet it keeps the
 # sink marked RUNNING, so nothing plays until the device happens to be closed and
@@ -9,6 +15,8 @@
 # reopen at once, so we do it right after every wake.
 
 import asyncio
+import glob
+import os
 import time
 
 POLL_S = 1.0
@@ -32,6 +40,34 @@ def suspend_count() -> int | None:
             return int(f.read().strip())
     except (OSError, ValueError):
         return None
+
+
+# The ROG Ally controller driver's config interface(s).
+ALLY_DRIVER = "/sys/bus/hid/drivers/asus_rog_ally"
+# The controller may not be ready right after a wake, so the mode is sent again later.
+MODE_RESEND_LATER_S = 3.0
+
+
+def gamepad_mode_files(driver_dir: str = ALLY_DRIVER) -> list[str]:
+    return sorted(glob.glob(os.path.join(driver_dir, "*", "gamepad_mode")))
+
+
+def resend_gamepad_mode(log, driver_dir: str = ALLY_DRIVER) -> int:
+    """Write each controller's current gamepad_mode back to it. Returns how many."""
+    done = 0
+    for path in gamepad_mode_files(driver_dir):
+        try:
+            with open(path) as f:
+                mode = f.read().strip()
+            if not mode:
+                continue
+            with open(path, "w") as f:
+                f.write(mode)
+            done += 1
+            log(f"re-sent gamepad_mode {mode} to {os.path.basename(os.path.dirname(path))}")
+        except OSError as e:
+            log(f"could not re-send gamepad_mode via {path}: {e}")
+    return done
 
 
 def sinks_to_reopen(pactl_short_sinks: str) -> list[str]:

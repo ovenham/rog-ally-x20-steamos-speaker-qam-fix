@@ -14,9 +14,10 @@
 # re-applies it.
 #
 # It also makes the X20's Quick Access button work (py_modules/qam_button.py): the
-# backend watches for the press and the frontend opens the menu. And it reopens the
-# speakers right after each wake from sleep (py_modules/wake_fix.py), which otherwise
-# stay silent for 30 s or more.
+# backend watches for the press and the frontend opens the menu. And after each wake
+# from sleep (py_modules/wake_fix.py) it re-sends the controller's mode, which the X20
+# sometimes loses, and reopens the speakers, which otherwise stay silent for 30 s or
+# more.
 
 import asyncio
 import json
@@ -36,7 +37,8 @@ SETTINGS_FILE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 # SteamOS updates and plugin updates.
 DATA_DIR = os.path.join(decky.DECKY_USER_HOME, ".local", "share", "ally-audio-fix")
 PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-DEFAULT_SETTINGS = {"auto_apply": False, "notified_boot": "", "qam_button": True, "wake_fix": True}
+DEFAULT_SETTINGS = {"auto_apply": False, "notified_boot": "", "qam_button": True, "wake_fix": True,
+                    "button_fix": True}
 MAX_LOG_LINES = 400
 
 # States that mean "the user should do something" and the startup toast for each.
@@ -79,6 +81,7 @@ class Plugin:
         self.qam = None
         self.wake = None
         self.wake_reopened = 0
+        self.mode_resent = 0
 
     # --- helpers ----------------------------------------------------------------------
 
@@ -242,10 +245,17 @@ class Plugin:
         return {"settings": settings, "qam": self._qam_info()}
 
     async def set_wake_fix(self, enabled: bool) -> dict:
+        return await self._set_wake_setting("wake_fix", enabled)
+
+    async def set_button_fix(self, enabled: bool) -> dict:
+        return await self._set_wake_setting("button_fix", enabled)
+
+    async def _set_wake_setting(self, key: str, enabled: bool) -> dict:
         settings = self._settings()
-        settings["wake_fix"] = bool(enabled)
+        settings[key] = bool(enabled)
         self._save_settings(settings)
-        if enabled:
+        # One watcher serves both fixes; run it while either is on.
+        if settings.get("wake_fix") or settings.get("button_fix"):
             self._start_wake()
         elif self.wake:
             await self.wake.stop()
@@ -260,13 +270,30 @@ class Plugin:
             "active": self.wake is not None,
             "wakes": self.wake.wakes if self.wake else 0,
             "reopened": self.wake_reopened,
+            "mode_resent": self.mode_resent,
         }
 
     def _start_wake(self) -> None:
         if self.wake or not qam_button.is_x20():
             return
-        self.wake = wake_fix.WakeWatcher(self._reopen_sinks, lambda m: decky.logger.info("wake: %s", m))
+        self.wake = wake_fix.WakeWatcher(self._after_wake, lambda m: decky.logger.info("wake: %s", m))
         self.wake.start()
+
+    async def _after_wake(self) -> None:
+        settings = self._settings()
+        buttons, speakers = settings.get("button_fix"), settings.get("wake_fix")
+        log = lambda m: decky.logger.info("wake: %s", m)  # noqa: E731
+        sent = False
+        if buttons:
+            sent = wake_fix.resend_gamepad_mode(log) > 0
+        if speakers:
+            await self._reopen_sinks()
+        if buttons:
+            # Once more a little later, in case the controller wasn't ready yet.
+            await asyncio.sleep(wake_fix.MODE_RESEND_LATER_S)
+            sent = wake_fix.resend_gamepad_mode(log) > 0 or sent
+        if sent:
+            self.mode_resent += 1
 
     async def _reopen_sinks(self) -> None:
         rc, out = await self._run(self._as_user("pactl", "list", "short", "sinks"), log=False)
@@ -324,7 +351,7 @@ class Plugin:
         decky.logger.info("X20 Fixes loaded")
         if self._settings().get("qam_button"):
             self._start_qam()
-        if self._settings().get("wake_fix"):
+        if self._settings().get("wake_fix") or self._settings().get("button_fix"):
             self._start_wake()
         # Give the audio stack a moment to come up before judging it.
         await asyncio.sleep(10)
