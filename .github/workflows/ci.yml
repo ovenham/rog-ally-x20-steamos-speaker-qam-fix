@@ -34,6 +34,9 @@ jobs:
       - name: Test sound-after-sleep fix
         run: python3 plugin/tests/wake_test.py
 
+      - name: Test speaker sound filter
+        run: python3 plugin/tests/sound_test.py
+
       - name: Test speaker fix and plugin backend (simulated X20)
         run: sudo PLUGIN=plugin speaker-fix/tests/run.sh
 

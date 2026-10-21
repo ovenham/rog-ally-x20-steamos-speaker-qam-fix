@@ -2,6 +2,7 @@
 import {
   ButtonItem,
   ConfirmModal,
+  DropdownItem,
   Field,
   Navigation,
   PanelSection,
@@ -25,10 +26,23 @@ import { FaVolumeUp } from "react-icons/fa";
 
 type Status = Record<string, string>;
 type Job = { kind: string; running: boolean; ok: boolean | null; step: string; log: string[] };
-type Settings = { auto_apply: boolean; qam_button: boolean; wake_fix: boolean; button_fix: boolean };
+type Settings = {
+  auto_apply: boolean;
+  qam_button: boolean;
+  wake_fix: boolean;
+  button_fix: boolean;
+  sound: string;
+};
 type Qam = { supported: boolean; active: boolean; devices: string[]; presses: number };
 type Wake = { supported: boolean; active: boolean; wakes: number; reopened: number; mode_resent: number };
-type Snapshot = { status: Status; job: Job; settings: Settings; qam: Qam; wake: Wake };
+type Sound = {
+  level: string;
+  levels: { id: string; label: string }[];
+  active: boolean;
+  sink: string;
+  error: string;
+};
+type Snapshot = { status: Status; job: Job; settings: Settings; qam: Qam; wake: Wake; sound: Sound };
 type Notice = { title?: string; body?: string; state?: string };
 
 const getStatus = callable<[], Snapshot>("get_status");
@@ -40,6 +54,16 @@ const reboot = callable<[], void>("reboot");
 const setQamButton = callable<[enabled: boolean], { settings: Settings; qam: Qam }>("set_qam_button");
 const setWakeFix = callable<[enabled: boolean], { settings: Settings; wake: Wake }>("set_wake_fix");
 const setButtonFix = callable<[enabled: boolean], { settings: Settings; wake: Wake }>("set_button_fix");
+const setSound = callable<[level: string], { settings: Settings; sound: Sound }>("set_sound");
+
+// What the speaker sound setting says under the dropdown.
+function soundDescription(s: Sound): string {
+  if (s.error) return s.error;
+  if (s.level === "off") return "Off. Fuller bass and wider stereo for the internal speakers.";
+  if (!s.active) return "On, but the filter isn't running yet. Try Refresh.";
+  return "On. Headphones, USB and Bluetooth audio are not affected. Turn the volume up a bit: " +
+    "the filter plays slightly quieter so it can't distort.";
+}
 
 // ESideMenu.QuickAccess in Steam's menu store.
 const QUICK_ACCESS = 2;
@@ -243,6 +267,23 @@ function Content() {
           </PanelSectionRow>
         )}
       </PanelSection>
+
+      {snap.sound && state !== "unsupported" && (
+        <PanelSection title="Speaker sound">
+          <PanelSectionRow>
+            <DropdownItem
+              label="Sound"
+              description={soundDescription(snap.sound)}
+              rgOptions={snap.sound.levels.map((l) => ({ data: l.id, label: l.label }))}
+              selectedOption={snap.sound.level}
+              onChange={async (o) => {
+                const r = await setSound(o.data);
+                setSnap({ ...snap, settings: r.settings, sound: r.sound });
+              }}
+            />
+          </PanelSectionRow>
+        </PanelSection>
+      )}
 
       {state !== "unsupported" && (
         <PanelSection title="Details">
