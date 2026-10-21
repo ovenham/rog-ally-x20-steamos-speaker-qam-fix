@@ -7,7 +7,8 @@ work out of the box:
 - **The Quick Access button** on the right side (workaround with Xbox + A)
 
 It also fixes two problems after waking from sleep: the speakers going silent for
-30 seconds or more, and the Xbox button sometimes going dead.
+30 seconds or more, and the Xbox button sometimes going dead. And it can make the
+speakers sound fuller (**Speaker sound**, off by default).
 
 **The speaker fix needs the SteamOS Beta channel.** It doesn't work on Stable.
 
@@ -144,6 +145,31 @@ Without the plugin, running those two commands after waking does the same thing.
 If your sink is named differently, `pactl list short sinks` shows its name.
 Turn it off with **Fix sound after sleep** in X20 Fixes.
 
+### Speaker sound
+
+On SteamOS the speakers sound thinner than on Windows. It isn't the tuning: the
+amps load the same TI tuning files on both (byte for byte), and the X20's Dolby
+tuning file has a flat EQ. What Windows adds is Dolby's processing on top, and
+Dolby's code can't run on Linux.
+
+**Speaker sound** in X20 Fixes (Off, Light, Full) adds a filter in front of the
+speakers only. It's built from PipeWire's own filters, so nothing else gets
+installed. It does three things:
+
+- **Bass:** the bass these small speakers can't play is turned into its overtones,
+  which they can. The ear fills in the missing low note.
+- **Body:** a broad lift around 380 Hz, where the speakers still have output.
+- **Width:** some of the difference between left and right is mixed back in. Only
+  above 300 Hz, so the bass stays centred.
+
+It also plays a few dB quieter, so the extra bass can't clip; turn the volume up a
+little. On Full, a full-scale bass-heavy test signal peaks at -1.5 dBFS.
+Headphones, USB and Bluetooth audio aren't affected. It needs WirePlumber 0.5
+(SteamOS 3.7 or newer).
+
+The filter runs as `~/.config/systemd/user/x20-sound.service`, with its config
+in `~/.config/x20-fixes/sound.conf`. Setting it to Off removes both.
+
 ### Quick Access button
 
 The Ally's extra buttons come from the controller's ASUS "N-KEY" HID interface
@@ -178,6 +204,7 @@ All of this is removed by *Remove fix* or `ally-audio-fix.sh uninstall`:
 | `/etc/modprobe.d/ally-audio-fix.conf` | Loads the layout module and points the amps at their tuning files |
 | `/etc/environment.d/90-ally-audio-fix.conf` | Points the audio system at the profile overlay |
 | `~/.local/share/ally-audio-fix/` | Cache of tuning files and rebuilt modules, so re-applying works offline |
+| `~/.config/systemd/user/x20-sound.service`, `~/.config/x20-fixes/sound.conf` | Only while **Speaker sound** is on; setting it to Off removes them |
 
 Only the active SteamOS slot is changed. Windows (in a dual-boot setup) and the
 BIOS are never touched.
@@ -216,6 +243,7 @@ build.sh        builds out/x20-fixes.zip
 ./build.sh                                  # needs Node.js 18+ and Python 3
 python3 plugin/tests/qam_test.py            # button watcher
 python3 plugin/tests/wake_test.py           # sound after sleep
+python3 plugin/tests/sound_test.py          # speaker sound filter config
 sudo PLUGIN=plugin speaker-fix/tests/run.sh # speaker fix + plugin backend on a simulated X20
 ```
 

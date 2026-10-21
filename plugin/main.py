@@ -17,7 +17,8 @@
 # backend watches for the press and the frontend opens the menu. And after each wake
 # from sleep (py_modules/wake_fix.py) it re-sends the controller's mode, which the X20
 # sometimes loses, and reopens the speakers, which otherwise stay silent for 30 s or
-# more.
+# more. "Speaker sound" (py_modules/sound_boost.py) adds an optional filter for fuller,
+# wider sound from the internal speakers.
 
 import asyncio
 import json
@@ -29,6 +30,7 @@ import decky
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "py_modules"))
 import qam_button  # noqa: E402
+import sound_boost  # noqa: E402
 import wake_fix  # noqa: E402
 
 SCRIPT = os.path.join(decky.DECKY_PLUGIN_DIR, "fix", "ally-audio-fix.sh")
@@ -38,7 +40,7 @@ SETTINGS_FILE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 DATA_DIR = os.path.join(decky.DECKY_USER_HOME, ".local", "share", "ally-audio-fix")
 PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 DEFAULT_SETTINGS = {"auto_apply": False, "notified_boot": "", "qam_button": True, "wake_fix": True,
-                    "button_fix": True}
+                    "button_fix": True, "sound": "off"}
 MAX_LOG_LINES = 400
 
 # States that mean "the user should do something" and the startup toast for each.
@@ -82,6 +84,8 @@ class Plugin:
         self.wake = None
         self.wake_reopened = 0
         self.mode_resent = 0
+        self.sound = {"active": False, "sink": "", "error": ""}
+        self.sound_lock = asyncio.Lock()
 
     # --- helpers ----------------------------------------------------------------------
 
@@ -214,7 +218,7 @@ class Plugin:
     async def get_status(self) -> dict:
         status = await self._check()
         return {"status": status, "job": self.job, "settings": self._settings(),
-                "qam": self._qam_info(), "wake": self._wake_info()}
+                "qam": self._qam_info(), "wake": self._wake_info(), "sound": await self._sound_info()}
 
     async def get_job(self) -> dict:
         return self.job
@@ -261,6 +265,87 @@ class Plugin:
             await self.wake.stop()
             self.wake = None
         return {"settings": settings, "wake": self._wake_info()}
+
+    async def set_sound(self, level: str) -> dict:
+        if level not in sound_boost.LEVELS:
+            level = "off"
+        settings = self._settings()
+        settings["sound"] = level
+        self._save_settings(settings)
+        await self._apply_sound(level)
+        return {"settings": settings, "sound": await self._sound_info()}
+
+    # --- speaker sound filter -----------------------------------------------------------
+
+    def _sound_paths(self) -> tuple:
+        pw = pwd.getpwnam(decky.DECKY_USER)
+        conf = os.path.join(pw.pw_dir, ".config", "x20-fixes", "sound.conf")
+        unit = os.path.join(pw.pw_dir, ".config", "systemd", "user", sound_boost.UNIT_NAME)
+        return pw, conf, unit
+
+    async def _user_systemctl(self, *args: str) -> tuple[int, str]:
+        return await self._run(self._as_user("systemctl", "--user", *args), log=False)
+
+    async def _pw_dump(self) -> str:
+        rc, out = await self._run(self._as_user("pw-dump"), log=False)
+        return out if rc == 0 else ""
+
+    async def _apply_sound(self, level: str) -> None:
+        async with self.sound_lock:
+            try:
+                await self._apply_sound_locked(level)
+            except Exception as e:  # keep the plugin alive whatever happens
+                decky.logger.exception("sound: %s failed", level)
+                self.sound["error"] = str(e)
+
+    async def _apply_sound_locked(self, level: str) -> None:
+        pw, conf, unit = self._sound_paths()
+        self.sound["error"] = ""
+        if level == "off":
+            if os.path.exists(unit):
+                await self._user_systemctl("disable", "--now", sound_boost.UNIT_NAME)
+                for path in (unit, conf):
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
+                await self._user_systemctl("daemon-reload")
+            self.sound["sink"] = ""
+            decky.logger.info("sound: off")
+            return
+        rc, out = await self._run(self._as_user("wireplumber", "--version"), log=False)
+        if not sound_boost.wireplumber_ok(out):
+            self.sound["error"] = "Needs WirePlumber 0.5 or newer (SteamOS 3.7+)."
+            return
+        sink = sound_boost.find_speaker_sink(await self._pw_dump())
+        if not sink:
+            self.sound["error"] = "The speakers aren't available yet. Apply the speaker fix first."
+            return
+        sound_boost.write_user_file(conf, sound_boost.conf_text(level, sink), pw.pw_uid, pw.pw_gid)
+        sound_boost.write_user_file(unit, sound_boost.unit_text(conf), pw.pw_uid, pw.pw_gid)
+        await self._user_systemctl("daemon-reload")
+        await self._user_systemctl("enable", sound_boost.UNIT_NAME)
+        rc, out = await self._user_systemctl("restart", sound_boost.UNIT_NAME)
+        if rc != 0:
+            self.sound["error"] = f"Could not start the filter: {out[-200:]}"
+            return
+        self.sound["sink"] = sink
+        decky.logger.info("sound: %s on %s", level, sink)
+
+    async def _sound_info(self) -> dict:
+        level = self._settings().get("sound", "off")
+        active = False
+        if level != "off" and not self.sound["error"]:
+            # The filter takes a moment to appear after a restart.
+            for _ in range(10):
+                active = sound_boost.filter_running(await self._pw_dump())
+                if active:
+                    break
+                await asyncio.sleep(0.3)
+        self.sound["active"] = active
+        return {**self.sound, "level": level,
+                "levels": [{"id": k, "label": "Off" if k == "off" else sound_boost.STRENGTHS[k]["label"]}
+                           for k in sound_boost.LEVELS]}
 
     # --- speakers after sleep -----------------------------------------------------------
 
@@ -357,6 +442,9 @@ class Plugin:
         await asyncio.sleep(10)
         status = await self._check()
         decky.logger.info("state at boot: %s (%s)", status.get("state"), status.get("message"))
+        # Regenerate the sound filter, in case the speaker sink or the plugin changed.
+        if self._settings().get("sound", "off") != "off":
+            await self._apply_sound(self._settings()["sound"])
         if self._settings().get("auto_apply") and status.get("state") == "needs_install":
             decky.logger.info("re-applying automatically")
             await self.start("apply")
@@ -374,4 +462,6 @@ class Plugin:
     async def _uninstall(self):
         # Removing the plugin does not remove the fix: the speakers keep working.
         # Use "Remove fix" in the plugin first if you want everything gone.
-        pass
+        # The sound filter goes, though: nothing would be left to turn it off. (Decky also
+        # calls this when it updates the plugin; the new version turns it back on at load.)
+        await self._apply_sound("off")
