@@ -14,7 +14,7 @@ p=$stage/x20-fixes
 mkdir -p "$p/dist" "$p/py_modules" "$p/fix"
 cp plugin/dist/index.js "$p/dist/"
 cp plugin/main.py plugin/plugin.json plugin/package.json "$p/"
-cp plugin/py_modules/qam_button.py "$p/py_modules/"
+cp plugin/py_modules/*.py "$p/py_modules/"
 cp speaker-fix/ally-audio-fix.sh "$p/fix/"
 cp -r speaker-fix/ucm speaker-fix/patches speaker-fix/prebuilt "$p/fix/"
 cp README.md LICENSE "$p/"

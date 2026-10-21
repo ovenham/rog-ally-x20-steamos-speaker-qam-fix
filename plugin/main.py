@@ -14,7 +14,9 @@
 # re-applies it.
 #
 # It also makes the X20's Quick Access button work (py_modules/qam_button.py): the
-# backend watches for the press and the frontend opens the menu.
+# backend watches for the press and the frontend opens the menu. And it reopens the
+# speakers right after each wake from sleep (py_modules/wake_fix.py), which otherwise
+# stay silent for 30 s or more.
 
 import asyncio
 import json
@@ -26,6 +28,7 @@ import decky
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "py_modules"))
 import qam_button  # noqa: E402
+import wake_fix  # noqa: E402
 
 SCRIPT = os.path.join(decky.DECKY_PLUGIN_DIR, "fix", "ally-audio-fix.sh")
 SETTINGS_FILE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
@@ -33,7 +36,7 @@ SETTINGS_FILE = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "settings.json")
 # SteamOS updates and plugin updates.
 DATA_DIR = os.path.join(decky.DECKY_USER_HOME, ".local", "share", "ally-audio-fix")
 PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-DEFAULT_SETTINGS = {"auto_apply": False, "notified_boot": "", "qam_button": True}
+DEFAULT_SETTINGS = {"auto_apply": False, "notified_boot": "", "qam_button": True, "wake_fix": True}
 MAX_LOG_LINES = 400
 
 # States that mean "the user should do something" and the startup toast for each.
@@ -74,6 +77,8 @@ class Plugin:
         self.task = None
         self.last_status = {}
         self.qam = None
+        self.wake = None
+        self.wake_reopened = 0
 
     # --- helpers ----------------------------------------------------------------------
 
@@ -96,13 +101,17 @@ class Plugin:
         # tools like curl and podman if it leaks into child processes.
         return {"PATH": PATH, "LANG": "C.UTF-8", "HOME": "/root", "ALLY_AUDIO_DATA": DATA_DIR}
 
-    def _user_cmd(self, *args: str) -> list:
+    def _as_user(self, *argv: str) -> list:
+        """Run argv as the desktop user, with what their session services need."""
         pw = pwd.getpwnam(decky.DECKY_USER)
         runtime = f"/run/user/{pw.pw_uid}"
         return ["runuser", "-u", pw.pw_name, "--", "env", "-i",
                 f"PATH={PATH}", "LANG=C.UTF-8", f"HOME={pw.pw_dir}", f"USER={pw.pw_name}",
                 f"XDG_RUNTIME_DIR={runtime}", f"DBUS_SESSION_BUS_ADDRESS=unix:path={runtime}/bus",
-                f"ALLY_AUDIO_DATA={DATA_DIR}", "/bin/sh", SCRIPT, *args]
+                f"ALLY_AUDIO_DATA={DATA_DIR}", *argv]
+
+    def _user_cmd(self, *args: str) -> list:
+        return self._as_user("/bin/sh", SCRIPT, *args)
 
     def _prepare_data_dir(self) -> None:
         # Owned by the deck user so the rootless build can write into it.
@@ -202,7 +211,7 @@ class Plugin:
     async def get_status(self) -> dict:
         status = await self._check()
         return {"status": status, "job": self.job, "settings": self._settings(),
-                "qam": self._qam_info()}
+                "qam": self._qam_info(), "wake": self._wake_info()}
 
     async def get_job(self) -> dict:
         return self.job
@@ -231,6 +240,44 @@ class Plugin:
             await self.qam.stop()
             self.qam = None
         return {"settings": settings, "qam": self._qam_info()}
+
+    async def set_wake_fix(self, enabled: bool) -> dict:
+        settings = self._settings()
+        settings["wake_fix"] = bool(enabled)
+        self._save_settings(settings)
+        if enabled:
+            self._start_wake()
+        elif self.wake:
+            await self.wake.stop()
+            self.wake = None
+        return {"settings": settings, "wake": self._wake_info()}
+
+    # --- speakers after sleep -----------------------------------------------------------
+
+    def _wake_info(self) -> dict:
+        return {
+            "supported": qam_button.is_x20(),
+            "active": self.wake is not None,
+            "wakes": self.wake.wakes if self.wake else 0,
+            "reopened": self.wake_reopened,
+        }
+
+    def _start_wake(self) -> None:
+        if self.wake or not qam_button.is_x20():
+            return
+        self.wake = wake_fix.WakeWatcher(self._reopen_sinks, lambda m: decky.logger.info("wake: %s", m))
+        self.wake.start()
+
+    async def _reopen_sinks(self) -> None:
+        rc, out = await self._run(self._as_user("pactl", "list", "short", "sinks"), log=False)
+        if rc != 0:
+            decky.logger.info("wake: pactl failed: %s", out[-300:])
+            return
+        for sink in wake_fix.sinks_to_reopen(out):
+            for state in ("1", "0"):
+                await self._run(self._as_user("pactl", "suspend-sink", sink, state), log=False)
+            self.wake_reopened += 1
+            decky.logger.info("wake: reopened %s", sink)
 
     # --- Quick Access button ------------------------------------------------------------
 
@@ -277,6 +324,8 @@ class Plugin:
         decky.logger.info("X20 Fixes loaded")
         if self._settings().get("qam_button"):
             self._start_qam()
+        if self._settings().get("wake_fix"):
+            self._start_wake()
         # Give the audio stack a moment to come up before judging it.
         await asyncio.sleep(10)
         status = await self._check()
@@ -289,6 +338,9 @@ class Plugin:
         if self.qam:
             await self.qam.stop()
             self.qam = None
+        if self.wake:
+            await self.wake.stop()
+            self.wake = None
         if self.task and not self.task.done():
             decky.logger.info("plugin unloading while a job runs; it will be cut short")
 

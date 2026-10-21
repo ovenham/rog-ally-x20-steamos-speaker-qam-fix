@@ -6,6 +6,9 @@ work out of the box:
 - **The internal speakers** (shows auto_null)
 - **The Quick Access button** on the right side (workaround with Xbox + A)
 
+It also stops the speakers from going silent for 30 seconds or more after waking
+from sleep.
+
 **The speaker fix needs the SteamOS Beta channel.** It doesn't work on Stable.
 
 ## Install
@@ -107,6 +110,25 @@ SoundWire bus. Four separate problems keep them silent:
 Each part is skipped once SteamOS or the BIOS handles it. If everything has been
 fixed upstream, the plugin says the fix can be removed.
 
+### Sound after sleep
+
+After waking from sleep, PipeWire tries to recover the open speaker stream in place
+and fails (`hw:amdsoundwire,2p: snd_pcm_avail after recover: Broken pipe`). It
+keeps the speaker sink marked as running anyway, so nothing plays until something
+closes and reopens the device, often 30 seconds or more later.
+
+X20 Fixes notices each wake and reopens the X20's open SoundWire sinks right away,
+as your user:
+
+```
+pactl suspend-sink alsa_output.pci-0000_64_00.5-platform-amd_sdw.HiFi__Speaker__sink 1
+pactl suspend-sink alsa_output.pci-0000_64_00.5-platform-amd_sdw.HiFi__Speaker__sink 0
+```
+
+Without the plugin, running those two commands after waking does the same thing.
+If your sink is named differently, `pactl list short sinks` shows its name.
+Turn it off with **Fix sound after sleep** in X20 Fixes.
+
 ### Quick Access button
 
 The Ally's extra buttons come from the controller's ASUS "N-KEY" HID interface
@@ -178,6 +200,7 @@ build.sh        builds out/x20-fixes.zip
 ```
 ./build.sh                                  # needs Node.js 18+ and Python 3
 python3 plugin/tests/qam_test.py            # button watcher
+python3 plugin/tests/wake_test.py           # sound after sleep
 sudo PLUGIN=plugin speaker-fix/tests/run.sh # speaker fix + plugin backend on a simulated X20
 ```
 

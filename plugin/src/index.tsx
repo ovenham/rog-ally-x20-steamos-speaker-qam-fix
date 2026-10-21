@@ -25,9 +25,10 @@ import { FaVolumeUp } from "react-icons/fa";
 
 type Status = Record<string, string>;
 type Job = { kind: string; running: boolean; ok: boolean | null; step: string; log: string[] };
-type Settings = { auto_apply: boolean; qam_button: boolean };
+type Settings = { auto_apply: boolean; qam_button: boolean; wake_fix: boolean };
 type Qam = { supported: boolean; active: boolean; devices: string[]; presses: number };
-type Snapshot = { status: Status; job: Job; settings: Settings; qam: Qam };
+type Wake = { supported: boolean; active: boolean; wakes: number; reopened: number };
+type Snapshot = { status: Status; job: Job; settings: Settings; qam: Qam; wake: Wake };
 type Notice = { title?: string; body?: string; state?: string };
 
 const getStatus = callable<[], Snapshot>("get_status");
@@ -37,6 +38,7 @@ const setAutoApply = callable<[enabled: boolean], Settings>("set_auto_apply");
 const startupNotice = callable<[], Notice>("startup_notice");
 const reboot = callable<[], void>("reboot");
 const setQamButton = callable<[enabled: boolean], { settings: Settings; qam: Qam }>("set_qam_button");
+const setWakeFix = callable<[enabled: boolean], { settings: Settings; wake: Wake }>("set_wake_fix");
 
 // ESideMenu.QuickAccess in Steam's menu store.
 const QUICK_ACCESS = 2;
@@ -280,6 +282,23 @@ function Content() {
               onChange={async (v) => {
                 const r = await setQamButton(v);
                 setSnap({ ...snap, settings: r.settings, qam: r.qam });
+              }}
+            />
+          </PanelSectionRow>
+        )}
+        {snap.wake.supported && (
+          <PanelSectionRow>
+            <ToggleField
+              label="Fix sound after sleep"
+              description={
+                snap.settings.wake_fix
+                  ? `Reopens the speakers right after waking (${snap.wake.reopened} times since boot).`
+                  : "Off. After waking, the speakers can stay silent for 30 seconds or more."
+              }
+              checked={snap.settings.wake_fix}
+              onChange={async (v) => {
+                const r = await setWakeFix(v);
+                setSnap({ ...snap, settings: r.settings, wake: r.wake });
               }}
             />
           </PanelSectionRow>

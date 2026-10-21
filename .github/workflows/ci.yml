@@ -31,6 +31,9 @@ jobs:
       - name: Test Quick Access button watcher
         run: python3 plugin/tests/qam_test.py
 
+      - name: Test sound-after-sleep fix
+        run: python3 plugin/tests/wake_test.py
+
       - name: Test speaker fix and plugin backend (simulated X20)
         run: sudo PLUGIN=plugin speaker-fix/tests/run.sh
 
